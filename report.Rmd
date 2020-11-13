@@ -1,0 +1,31 @@
+---
+title: "Movielens Project"
+author: "Adele Taylor"
+date: "09/11/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+MovieLens (movielens.org) is a non-commercial film rating and recommendation website run by the GroupLens research group at the University of Minnesota. The aim of this project is to use the 10M dataset to design and validate a movie recommendation system.
+
+
+```{r intro}
+
+```
+
+## Analysis
+
+
+
+```{r analysis}
+
+```
+
+## Results
+
+## Conclusion
