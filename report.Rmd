@@ -7,12 +7,17 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(tidyverse)
 ```
 
 ## Introduction
 
 MovieLens (movielens.org) is a non-commercial film rating and recommendation website run by the GroupLens research group at the University of Minnesota. The aim of this project is to use the 10M dataset to design and validate a movie recommendation system.
 
+The dataset was initially divided into training and validation sets using code provided by the edX course "HarvardX PH125.9x Data Science: Capstone". All investigations and analysis was performed on the training set ("edx"), which comprised over 9 million observations consisting of the variables "userId", "movieId", "timestamp", "title" and "genres". All further reference to "the dataset" refer to this subset, unless explicitly stated otherwise.
+
+<!-- summary of steps taken -->
 
 ```{r intro}
 
@@ -20,6 +25,10 @@ MovieLens (movielens.org) is a non-commercial film rating and recommendation web
 
 ## Analysis
 
+<!-- data cleaning -->
+<!-- data visualization and exploration -->
+<!-- insights gained -->
+<!-- modelling approach -->
 
 
 ```{r analysis}
@@ -28,4 +37,10 @@ MovieLens (movielens.org) is a non-commercial film rating and recommendation web
 
 ## Results
 
+<!-- modelling results and discussion of performance -->
+
 ## Conclusion
+
+<!-- summary -->
+<!-- limitations -->
+<!-- future work -->
