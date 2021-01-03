@@ -83,3 +83,30 @@ number_v_average_rating <- edx %>% group_by(movieId) %>% summarise(n=n(), averag
 print(number_v_average_rating)
 dev.off()
 browseURL("number_v_average_rating.png") 
+
+
+
+lambdas <- seq(0, 10, 0.25)
+
+rmses <- sapply(lambdas, function(l){
+
+  mu <- mean(train_set$rating)
+
+  b_i <- train_set %>%
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu)/(n()+l))
+
+  b_u <- train_set %>%
+    left_join(b_i, by="movieId") %>%
+    group_by(userId) %>%
+    summarize(b_u = sum(rating - b_i - mu)/(n()+l))
+
+  predicted_ratings <-
+    test_set %>%
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    mutate(pred = mu + b_i + b_u) %>%
+    pull(pred)
+
+  return(RMSE(predicted_ratings, test_set$rating))
+})
