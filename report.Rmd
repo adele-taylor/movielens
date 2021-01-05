@@ -68,10 +68,19 @@ MovieLens (movielens.org) is a non-commercial film rating and recommendation web
 
 The dataset was initially divided into training and validation sets using code provided by the edX course "HarvardX PH125.9x Data Science: Capstone". All investigations and analysis was performed on the training set ("edx"), which comprised over 9 million observations consisting of the variables "userId", "movieId", "timestamp", "title" and "genres". All further reference to "the dataset" refer to this subset, unless explicitly stated otherwise.
 
+The dataset contains ratings for `r length(unique(edx$movieId)) %>% print()` movies by `r length(unique(edx$userId)) %>% print()' users. To get an idea of how these ratings are distributed, several graphs were created as below.
+
+
 <!-- summary of steps taken -->
 
-```{r intro}
+```{r intro, echo=FALSE, message=FALSE}
+median_user_reviews <- edx %>% group_by(userId) %>% summarise(n=n()) %>% pull() %>% median()
+edx %>% group_by(userId) %>% summarise(n=n()) %>% ggplot(aes(n))+geom_histogram()+geom_vline(aes(xintercept=median_user_reviews, colour="Median"))+ggtitle("Number of reviews per user")+xlab("")+ylab("")+scale_color_manual(name = "", values = c(Median = "red")) 
 
+median_film_reviews <- edx %>% group_by(movieId) %>% summarise(n=n()) %>% pull() %>% median()
+edx %>% group_by(userId) %>% summarise(n=n()) %>% ggplot(aes(n))+geom_histogram()+geom_vline(aes(xintercept = median_film_reviews, colour="Median"))+ggtitle("Number of reviews per film")+xlab("")+ylab("")+scale_colour_manual(name="", values=c(Median="red"))
+
+edx %>% group_by(movieId) %>% summarise(n=n(), average=mean(rating)) %>% mutate(number=ifelse(n<10, "<10 reviews", ">=10 reviews")) %>% ggplot(aes(n, average, col=number))+geom_point()+ggtitle("Average rating vs number of reviews per film")+scale_colour_manual(name="", breaks=c('<10 reviews'), values=scales::hue_pal()(2))
 ```
 
 ## Analysis

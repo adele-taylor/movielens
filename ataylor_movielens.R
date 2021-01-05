@@ -84,6 +84,17 @@ print(number_v_average_rating)
 dev.off()
 browseURL("number_v_average_rating.png") 
 
+# investigate possible associations using subset
+
+set.seed(20, sample.kind="Rounding")
+subset <- edx[sample(9000055, 10000),]
+subset2 <- subset %>% semi_join(edx, by="userId")
+subset2 <- subset2[sample(nrow(subset2),1000),]
+
+
+RMSE <- function(real, predicted){
+  sqrt(mean((real-predicted)^2))
+}
 
 
 lambdas <- seq(0, 10, 0.25)
