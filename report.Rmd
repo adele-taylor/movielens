@@ -7,8 +7,6 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(caret)
-library(tidyverse)
 ##########################################################
 # Create edx set, validation set (final hold-out test set)
 ##########################################################
@@ -60,6 +58,12 @@ removed <- anti_join(temp, validation)
 edx <- rbind(edx, removed)
 
 rm(dl, ratings, movies, test_index, temp, movielens, removed)
+
+options(digits=4)
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", repos = "http://cran.us.r-project.org")
+library(knitr)
+library(kableExtra)
 ```
 
 ## Introduction
@@ -68,32 +72,94 @@ MovieLens (movielens.org) is a non-commercial film rating and recommendation web
 
 The dataset was initially divided into training and validation sets using code provided by the edX course "HarvardX PH125.9x Data Science: Capstone". All investigations and analysis was performed on the training set ("edx"), which comprised over 9 million observations consisting of the variables "userId", "movieId", "timestamp", "title" and "genres". All further reference to "the dataset" refer to this subset, unless explicitly stated otherwise.
 
+We will briefly examine the dataset to gain insights which may be useful, before trying out a range of models on a smaller subset of the dataset. We will construct a regularised linear model and use this and other potentially well-performing models to create an ensemble which we will use to predict ratings for the validation dataset.
+
+## Analysis
+
 The dataset contains ratings for `r length(unique(edx$movieId)) %>% print()` movies by `r length(unique(edx$userId)) %>% print()' users. To get an idea of how these ratings are distributed, several graphs were created as below.
 
 
-<!-- summary of steps taken -->
-
-```{r intro, echo=FALSE, message=FALSE}
+```{r analysis_1, echo=FALSE, message=FALSE}
 median_user_reviews <- edx %>% group_by(userId) %>% summarise(n=n()) %>% pull() %>% median()
 edx %>% group_by(userId) %>% summarise(n=n()) %>% ggplot(aes(n))+geom_histogram()+geom_vline(aes(xintercept=median_user_reviews, colour="Median"))+ggtitle("Number of reviews per user")+xlab("")+ylab("")+scale_color_manual(name = "", values = c(Median = "red")) 
 
 median_film_reviews <- edx %>% group_by(movieId) %>% summarise(n=n()) %>% pull() %>% median()
-edx %>% group_by(userId) %>% summarise(n=n()) %>% ggplot(aes(n))+geom_histogram()+geom_vline(aes(xintercept = median_film_reviews, colour="Median"))+ggtitle("Number of reviews per film")+xlab("")+ylab("")+scale_colour_manual(name="", values=c(Median="red"))
+edx %>% group_by(movieId) %>% summarise(n=n()) %>% ggplot(aes(n))+geom_histogram()+geom_vline(aes(xintercept = median_film_reviews, colour="Median"))+ggtitle("Number of reviews per film")+xlab("")+ylab("")+scale_colour_manual(name="", values=c(Median="red"))
 
 edx %>% group_by(movieId) %>% summarise(n=n(), average=mean(rating)) %>% mutate(number=ifelse(n<10, "<10 reviews", ">=10 reviews")) %>% ggplot(aes(n, average, col=number))+geom_point()+ggtitle("Average rating vs number of reviews per film")+scale_colour_manual(name="", breaks=c('<10 reviews'), values=scales::hue_pal()(2))
+
+temp <- edx %>% group_by(movieId) %>% summarise(n=n(), average=mean(rating))
 ```
 
-## Analysis
+It's clear that there is a large variation in the number of reviews a film gets and in the number of ratings a given user makes. We can also see that there is a slight positive correlation (r=`r cor(temp$n, temp$average)') between the number of reviews a film gets and its average (mean) rating. 
 
-<!-- data cleaning -->
-<!-- data visualization and exploration -->
+To investigate further which predictors we will train and then test several simple models using randomly generated subsets. The sheer size of the dataset will prevent us from using all of it to train models, but we will use a much larger subset when constructing the final ensemble.
+
+We will use the caret package and train a general linear model ("glm"), a k-nearest neighbours model ("knn") as well as models using random partitioning ("rpart") and the popular Random Forest algorithm ("rf"). First we will only use the userId, then only the movieId, and finally both.
+
+
+```{r analysis_2, echo=FALSE, message=FALSE, warnings=FALSE}
+set.seed(20, sample.kind="Rounding")
+subset <- edx[sample(9000055, 10000),]
+
+set.seed(10, sample.kind="Rounding")
+subset2 <- edx %>% semi_join(subset, by="userId")
+subset2 <- subset2[sample(nrow(subset2),10000),]
+
+
+#going to look at four basic models to start with
+models <- c("glm", "knn", "rf", "rpart")
+
+RMSE <- function(real, predicted){
+sqrt(mean((real-predicted)^2))
+}
+
+set.seed(3, sample.kind="Rounding")
+
+userId_predictions <- sapply(models,function(model){
+fit<- train(rating ~ userId, model=model, data=subset)
+predictions <- predict(fit,subset2)
+RMSE(predictions, subset2$rating)
+})
+
+set.seed(1, sample.kind="Rounding")
+subset3 <- edx[sample(9000055, 10000),]
+
+set.seed(8, sample.kind="Rounding")
+subset4 <- edx %>% semi_join(subset3, by="movieId")
+subset4 <- subset4[sample(nrow(subset4),10000),]
+
+set.seed(4, sample.kind="Rounding")
+
+movieId_predictions <- sapply(models,function(model){
+fit<- train(rating ~ userId, model=model, data=subset3)
+predictions <- predict(fit,subset4)
+RMSE(predictions, subset4$rating)
+})
+
+set.seed(19, sample.kind="Rounding")
+subset5 <- edx[sample(9000055, 10000),]
+
+set.seed(80, sample.kind="Rounding")
+subset6 <- edx %>% semi_join(subset5, by="movieId")
+subset6 <- subset6[sample(nrow(subset6),10000),]
+
+set.seed(1, sample.kind="Rounding")
+
+user_and_movie_predictions <- sapply(models,function(model){
+fit<- train(rating ~ userId, model=model, data=subset5)
+predictions <- predict(fit,subset6)
+RMSE(predictions, subset6$rating)
+})
+
+predictions <- userId_predictions %>% rbind(movieId_predictions) %>% rbind(user_and_movie_predictions)
+rownames(predictions) <- c("userId only", "movieId only", "both userId and movieId")
+
+predictions %>% kable() %>% kable_styling()
+
+```
+
 <!-- insights gained -->
-<!-- modelling approach -->
-
-
-```{r analysis}
-
-```
 
 ## Results
 
@@ -102,5 +168,5 @@ edx %>% group_by(movieId) %>% summarise(n=n(), average=mean(rating)) %>% mutate(
 ## Conclusion
 
 <!-- summary -->
-<!-- limitations -->
-<!-- future work -->
+
+Due to time and computer power constraints, we could only perform a subset of the analysis and training of potential models that we would have wished. In particular, we did not fully investigate whether adding some (or all) of the genre tags as predictors would have increased accuracy or provided any additonal information beyond what we can glean from user and movie effects. To do this, we would first have to introduce extra variables/columns (one for each genre tag) and then investigate fully how these may interact with the other predictors. I suspect by themselves they would not provide any additional information beyond the movie effect, but the interaction with the user may yield better results.
