@@ -146,7 +146,7 @@ movieId_model_predictions <- sapply(movieId_models["finalModel",], function(mode
   predict(model,subset4)
 })
 
-movieId_rmses <- apply(movieId_model_predictions, 2, function(predictions){RMSE(predictions.,subset4$rating)})
+movieId_rmses <- apply(movieId_model_predictions, 2, function(predictions){RMSE(predictions,subset4$rating)})
 
 
 #finally both
@@ -264,7 +264,6 @@ Using this final model on the validation set gave a final RMSE of `r final_rmse`
 
 ## Conclusion
 
-
-Due to time and computer power constraints, we could only perform a subset of the analysis and training of potential models that we would have wished. In particular, we did not fully investigate whether adding some (or all) of the genre tags as predictors would have increased accuracy or provided any additonal information beyond what we can glean from user and movie effects. To do this, we would first have to introduce extra variables/columns (one for each genre tag) and then investigate fully how these may interact with the other predictors. I suspect by themselves they would not provide any additional information beyond the movie effect, but the interaction with the user may yield better results. 
+ Due to time and computer power constraints, we could only perform a subset of the analysis and training of potential models that we would have wished. In particular, we did not fully investigate whether adding some (or all) of the genre tags as predictors would have increased accuracy or provided any additonal information beyond what we can glean from user and movie effects. To do this, we would first have to introduce extra variables/columns (one for each genre tag) and then investigate fully how these may interact with the other predictors. I suspect by themselves they would not provide any additional information beyond the movie effect, but the interaction with the user may yield better results. 
 
 Retraining the chosen models on the whole of the edx dataset would almost certainly have improved the performance of the final ensemble, but again this was unable to be completed due to time constraints.

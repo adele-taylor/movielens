@@ -134,7 +134,7 @@ movieId_model_predictions <- sapply(movieId_models["finalModel",], function(mode
   predict(model,subset4)
 })
 
-movieId_rmses <- apply(movieId_model_predictions, 2, function(predictions){RMSE(predictions.,subset4$rating)})
+movieId_rmses <- apply(movieId_model_predictions, 2, function(predictions){RMSE(predictions,subset4$rating)})
 
 
 #finally both
@@ -224,3 +224,5 @@ final_model <- function(validation_set){
 final_predictions <- final_model(validation)
 
 final_rmse <- RMSE(final_predictions, validation$rating)
+
+finals_rmse
