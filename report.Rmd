@@ -74,6 +74,8 @@ The dataset was initially divided into training and validation sets using code p
 
 We will briefly examine the dataset to gain insights which may be useful, before trying out a range of models on a smaller subset of the dataset. We will construct a regularised linear model and use this and other potentially well-performing models to create an ensemble which we will use to predict ratings for the validation dataset.
 
+All the code for the analyses mentioned in this report is included in the ataylor_movielens.R file.
+
 ## Analysis
 
 The dataset contains ratings for `r length(unique(edx$movieId)) %>% print()` movies by `r length(unique(edx$userId)) %>% print()' users. To get an idea of how these ratings are distributed, several graphs were created as below.
@@ -116,12 +118,18 @@ sqrt(mean((real-predicted)^2))
 
 set.seed(3, sample.kind="Rounding")
 
-userId_predictions <- sapply(models,function(model){
-fit<- train(rating ~ userId, model=model, data=subset)
-predictions <- predict(fit,subset2)
-RMSE(predictions, subset2$rating)
+#frst userId alone
+userId_models <- sapply(models,function(model){
+train(rating ~ userId, model=model, data=subset)
 })
+userId_model_predictions <- sapply(userId_models["finalModel",], function(model){
+  predict(model,subset2)
+  })
 
+userId_rmses <- apply(userId_model_predictions, 2, function(predictions){RMSE(predictions,subset2$rating)})
+
+
+#then movieId alone
 set.seed(1, sample.kind="Rounding")
 subset3 <- edx[sample(9000055, 10000),]
 
@@ -131,11 +139,17 @@ subset4 <- subset4[sample(nrow(subset4),10000),]
 
 set.seed(4, sample.kind="Rounding")
 
-movieId_predictions <- sapply(models,function(model){
-fit<- train(rating ~ userId, model=model, data=subset3)
-predictions <- predict(fit,subset4)
-RMSE(predictions, subset4$rating)
+movieId_models <- sapply(models,function(model){
+  train(rating ~ movieId, model=model, data=subset3)
 })
+movieId_model_predictions <- sapply(movieId_models["finalModel",], function(model){
+  predict(model,subset4)
+})
+
+movieId_rmses <- apply(movieId_model_predictions, 2, function(predictions){RMSE(predictions.,subset4$rating)})
+
+
+#finally both
 
 set.seed(19, sample.kind="Rounding")
 subset5 <- edx[sample(9000055, 10000),]
@@ -146,27 +160,111 @@ subset6 <- subset6[sample(nrow(subset6),10000),]
 
 set.seed(1, sample.kind="Rounding")
 
-user_and_movie_predictions <- sapply(models,function(model){
-fit<- train(rating ~ userId, model=model, data=subset5)
-predictions <- predict(fit,subset6)
-RMSE(predictions, subset6$rating)
+user_and_movie_models <- sapply(models,function(model){
+  train(rating ~ userId + movieId, model=model, data=subset5)
+})
+user_and_movie_model_predictions <- sapply(user_and_movie_models["finalModel",], function(model){
+  predict(model,subset6)
 })
 
-predictions <- userId_predictions %>% rbind(movieId_predictions) %>% rbind(user_and_movie_predictions)
-rownames(predictions) <- c("userId only", "movieId only", "both userId and movieId")
+user_and_movie_rmses <- apply(userId_model_predictions,2, function(predictions){RMSE(predictions,subset6$rating)})
 
+predictions <- userId_rmses %>% rbind(movieId_rmses) %>% rbind(user_and_movie_rmses)
+rownames(predictions) <- c("userId only", "movieId only", "both userId and movieId")
 predictions %>% kable() %>% kable_styling()
 
 ```
 
-<!-- insights gained -->
+None of these models produce particularly good root mean square errors - although this is probably due to the small size of the subsets used for training (~0.1% of the dataset) as much as whether a particular model is a good fit for this task. As there is little difference between them, we will use all in our final ensemble. 
+
+The regularised linear model is built from taking the mean rating and adding effects for the user and movie seperately (by generating the user/movie average and taking the difference from global mean with a factor proportional to 1/n to reduce impact of users/movies with few ratings). We check the potential for this model first by partitioning the dataset into training/test subsets. Unlike with the other models, we can use a much larger proportion of the full dataset for training, which should help.
+
+In order to tune this model, we tested a number of different parameters $\lambda$ and take the minimum.
+
+```{r analysis_3, echo=F, message=F, warning=F}
+set.seed(23, sample.kind="Rounding")
+test_index <- edx %>% createDataPartition(times = 1, p=0.1)
+test_set <- edx[index]
+train_set <- edx[-index] %>% semi_join(test_set, by="userId") %>% semi_join(test_set, by="movieId")
+
+###tune a regularised linear model
+
+lambdas <- seq(0, 10, 0.25)
+
+regularised_model <- function(l, validation_set){
+
+  mu <- mean(train_set$rating)
+
+  b_i <- train_set %>%
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu)/(n()+l))
+
+  b_u <- train_set %>%
+    left_join(b_i, by="movieId") %>%
+    group_by(userId) %>%
+    summarize(b_u = sum(rating - b_i - mu)/(n()+l))
+
+  predicted_ratings <-
+    validation_set %>%
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    mutate(pred = mu + b_i + b_u) %>%
+    pull(pred)
+
+  return(predicted_ratings)
+}
+
+regularised_model_RMSE <- sapply(lambdas, function(l){
+  RMSE(regularised_model(l),test_set$rating)
+})
+
+plot(lambdas,regularised_model_RMSE)
+l<- lambdas[which(regularised_model_RMSE==min(regularised_model_RMSE))]
+min(regularised_model_RMSE)
+```
+
+From the graph we can see that using $\lambda = $ `r l' gives us a root mean square error of `r min(regularised)', which is much better than the previous models.
+
+We will now proceed with building an ensemble, using the average of the previously generated models (with $\lambda = $ `r l' for the regularised linear model). We show the R code for this model below.
+
+```{r final_model, message=F, warnings=F}
+
+final_model <- function(validation_set){
+  user <- sapply(userId_models["finalModel",], function(model){
+    predict(model, validation_set)
+  }) %>% rowMeans()
+  movie <- sapply(movieId_models["finalModel"], function(model){
+    predict(model, validation_set)
+  }) %>% rowMeans()
+  user_and_movie <- sapply(user_and_movie_models["finalModel"], function(model){
+    predict(model, validation_set)
+  }) %>% rowMeans()
+  regularised <- regularised_model(l, validation_set)
+  
+  return((user+movie+user_and_movie+regularised)/4)
+  
+}
+
+
+```
+
+
 
 ## Results
 
-<!-- modelling results and discussion of performance -->
+```{r results, echo=F, message=F, warnings=F}
+
+final_predictions <- final_model(validation)
+
+final_rmse <- RMSE(final_predictions, validation$rating)
+
+```
+
+Using this final model on the validation set gave a final RMSE of `r final_rmse`. 
 
 ## Conclusion
 
-<!-- summary -->
 
-Due to time and computer power constraints, we could only perform a subset of the analysis and training of potential models that we would have wished. In particular, we did not fully investigate whether adding some (or all) of the genre tags as predictors would have increased accuracy or provided any additonal information beyond what we can glean from user and movie effects. To do this, we would first have to introduce extra variables/columns (one for each genre tag) and then investigate fully how these may interact with the other predictors. I suspect by themselves they would not provide any additional information beyond the movie effect, but the interaction with the user may yield better results.
+Due to time and computer power constraints, we could only perform a subset of the analysis and training of potential models that we would have wished. In particular, we did not fully investigate whether adding some (or all) of the genre tags as predictors would have increased accuracy or provided any additonal information beyond what we can glean from user and movie effects. To do this, we would first have to introduce extra variables/columns (one for each genre tag) and then investigate fully how these may interact with the other predictors. I suspect by themselves they would not provide any additional information beyond the movie effect, but the interaction with the user may yield better results. 
+
+Retraining the chosen models on the whole of the edx dataset would almost certainly have improved the performance of the final ensemble, but again this was unable to be completed due to time constraints.

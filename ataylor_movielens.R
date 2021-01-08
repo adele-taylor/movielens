@@ -107,11 +107,15 @@ sqrt(mean((real-predicted)^2))
 set.seed(3, sample.kind="Rounding")
 
 #frst userId alone
-userId_predictions <- sapply(models,function(model){
-fit<- train(rating ~ userId, model=model, data=subset)
-predictions <- predict(fit,subset2)
-RMSE(predictions, subset2$rating)
+userId_models <- sapply(models,function(model){
+train(rating ~ userId, model=model, data=subset)
 })
+userId_model_predictions <- sapply(userId_models["finalModel",], function(model){
+  predict(model,subset2)
+  })
+
+userId_rmses <- apply(userId_model_predictions, 2, function(predictions){RMSE(predictions,subset2$rating)})
+
 
 #then movieId alone
 set.seed(1, sample.kind="Rounding")
@@ -123,11 +127,14 @@ subset4 <- subset4[sample(nrow(subset4),10000),]
 
 set.seed(4, sample.kind="Rounding")
 
-movieId_predictions <- sapply(models,function(model){
-  fit<- train(rating ~ userId, model=model, data=subset3)
-  predictions <- predict(fit,subset4)
-  RMSE(predictions, subset4$rating)
+movieId_models <- sapply(models,function(model){
+  train(rating ~ movieId, model=model, data=subset3)
 })
+movieId_model_predictions <- sapply(movieId_models["finalModel",], function(model){
+  predict(model,subset4)
+})
+
+movieId_rmses <- apply(movieId_model_predictions, 2, function(predictions){RMSE(predictions.,subset4$rating)})
 
 
 #finally both
@@ -141,15 +148,17 @@ subset6 <- subset6[sample(nrow(subset6),10000),]
 
 set.seed(1, sample.kind="Rounding")
 
-user_and_movie_predictions <- sapply(models,function(model){
-  fit<- train(rating ~ userId, model=model, data=subset5)
-  predictions <- predict(fit,subset6)
-  RMSE(predictions, subset6$rating)
+user_and_movie_models <- sapply(models,function(model){
+  train(rating ~ userId + movieId, model=model, data=subset5)
+})
+user_and_movie_model_predictions <- sapply(user_and_movie_models["finalModel",], function(model){
+  predict(model,subset6)
 })
 
+user_and_movie_rmses <- apply(userId_model_predictions,2, function(predictions){RMSE(predictions,subset6$rating)})
 
 
-predictions <- userId_predictions %>% rbind(movieId_predictions) %>% rbind(user_and_movie_predictions)
+predictions <- userId_rmses %>% rbind(movieId_rmses) %>% rbind(user_and_movie_rmses)
 rownames(predictions) <- c("userId only", "movieId only", "both userId and movieId")
 
 predictions %>% kable() %>% kable_styling()
@@ -162,29 +171,56 @@ train_set <- edx[-index] %>% semi_join(test_set, by="userId") %>% semi_join(test
 
 lambdas <- seq(0, 10, 0.25)
 
-regularised <- sapply(lambdas, function(l){
-
+regularised_model <- function(l){
+  
   mu <- mean(train_set$rating)
-
+  
   b_i <- train_set %>%
     group_by(movieId) %>%
     summarize(b_i = sum(rating - mu)/(n()+l))
-
+  
   b_u <- train_set %>%
     left_join(b_i, by="movieId") %>%
     group_by(userId) %>%
     summarize(b_u = sum(rating - b_i - mu)/(n()+l))
-
+  
   predicted_ratings <-
     test_set %>%
     left_join(b_i, by = "movieId") %>%
     left_join(b_u, by = "userId") %>%
     mutate(pred = mu + b_i + b_u) %>%
     pull(pred)
+  
+  return(predicted_ratings)
+}
 
-  return(RMSE(predicted_ratings, test_set$rating))
+regularised_model_RMSE <- sapply(lambdas, function(l){
+  RMSE(regularised_model(l),test_set$rating)
 })
 
-plot(lambdas,regularised)
-l<- lambdas[which(regularised==min(regularised))]
-min(regularised)
+plot(lambdas,regularised_model_RMSE)
+l<- lambdas[which(regularised_model_RMSE==min(regularised_model_RMSE))]
+min(regularised_model_RMSE)
+
+#build ensemble
+final_model <- function(validation_set){
+  user <- sapply(userId_models["finalModel",], function(model){
+    predict(model, validation_set)
+  }) %>% rowMeans()
+  movie <- sapply(movieId_models["finalModel"], function(model){
+    predict(model, validation_set)
+  }) %>% rowMeans()
+  user_and_movie <- sapply(user_and_movie_models["finalModel"], function(model){
+    predict(model, validation_set)
+  }) %>% rowMeans()
+  regularised <- regularised_model(l, validation_set)
+  
+  return((user+movie+user_and_movie+regularised)/4)
+  
+}
+
+#run final validation
+
+final_predictions <- final_model(validation)
+
+final_rmse <- RMSE(final_predictions, validation$rating)
